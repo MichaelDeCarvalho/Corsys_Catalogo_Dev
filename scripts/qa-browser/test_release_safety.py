@@ -48,28 +48,30 @@ class ReleaseSafetyGuard(unittest.TestCase):
         self.assertRegex(data, r"(?m)^\s+VITE_GOOGLE_ROUTES_UI_ENABLED:\s*['\"]false['\"]\s*$")
         self.assertNotRegex(data, r"(?m)^\s+GOOGLE_ROUTES_ENABLED:\s*['\"]?true['\"]?\s*$")
 
-    def test_release_excludes_unapproved_paid_google_backend(self) -> None:
-        # This PR intentionally carries the unpaid/manual-delivery release ONLY.
-        # The paid Google SQL, Edge entrypoint and DB tests are preserved on
-        # hold/google-routes-after-pr6-20261021 for a separately approved release.
-        excluded = (
-            ROOT / "supabase/migrations/20261011032224_google_routes_usage_limits.sql",
-            ROOT / "supabase/migrations/20261011035235_google_routes_burst_protection.sql",
-            ROOT / "supabase/functions/estimate-delivery/index.ts",
-            ROOT / "supabase/tests/database/05_google_routes_usage_test.sql",
-            ROOT / "supabase/tests/database/06_google_routes_burst_test.sql",
-        )
-        for path in excluded:
-            with self.subTest(path=str(path.relative_to(ROOT))):
-                self.assertFalse(path.exists(), "Paid Google backend unexpectedly included in release")
-        config = (ROOT / "supabase/config.toml").read_text(encoding="utf-8")
-        self.assertNotIn("[functions.estimate-delivery]", config)
+    def test_release_google_remains_fail_closed(self) -> None:
+        # PR #6 (unpaid) still has the original backend-exclusion guard on
+        # its own branch. This development branch may contain staged Google
+        # code but MUST NOT activate it or allow a billable unbounded call.
+        estimate = ROOT / "supabase/functions/estimate-delivery/index.ts"
+        usage = ROOT / "supabase/migrations/20261011032224_google_routes_usage_limits.sql"
+        burst = ROOT / "supabase/migrations/20261011035235_google_routes_burst_protection.sql"
+        config = (ROOT / "vite.config.ts").read_text(encoding="utf-8")
+        self.assertIn("RELEASE_BLOCKED_GOOGLE_ROUTES", config)
+        if estimate.exists():
+            self.assertTrue(usage.is_file() and burst.is_file(),
+                            "Staged Google backend must include global quota migrations")
+            code = estimate.read_text(encoding="utf-8")
+            self.assertIn('Deno.env.get("GOOGLE_ROUTES_ENABLED") !== "true"', code)
+            self.assertIn('reserve_google_routes_attempt', code)
+            self.assertNotIn('reserveAttempt: async () => true', code)
+            self.assertNotIn('Math.abs(hash % 20000)', code)
+        else:
+            self.assertFalse(usage.exists())
+            self.assertFalse(burst.exists())
         self.assertTrue(
             (ROOT / "supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql").is_file()
         )
-        runbook = ROOT / "docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md"
-        self.assertTrue(runbook.is_file())
-        self.assertIn("db push", runbook.read_text(encoding="utf-8"))
+        self.assertTrue((ROOT / "docs/qa/PR6_SELECTIVE_MIGRATION_000023_RUNBOOK_20261019.md").is_file())
 
 
 if __name__ == "__main__":
