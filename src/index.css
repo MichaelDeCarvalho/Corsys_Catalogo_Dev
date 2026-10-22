@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+:root {
+  --primary-dark: #0F172A;
+  --primary-accent: #FF5A00;
+  --cta-text: #FFFFFF;
+  --bg-main: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --border-color: #E2E8F0;
+  --cta-hover: #D94E00;
+  --success: #16A34A;
+  --text-muted: #475569;
+}
