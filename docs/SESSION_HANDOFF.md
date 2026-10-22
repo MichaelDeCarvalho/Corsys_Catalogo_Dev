@@ -1,3 +1,12 @@
+## Checkpoint de desenvolvimento — 22/10/2026: frete V1 (não publicado)
+
+- Branch: `fix/frete-v1-release-readiness`, criada a partir de `82bedffa3e596ecca69879df6b70e6e71a66b6a4` após sincronização AI Studio.
+- Alterações preparadas: restaurado `bun.lock`; HMAC dedicado obrigatório sem segredo fixo; sem frete fictício quando faltar Google; cotas Google reservadas via RPC global; métodos e origem verificados por tenant; rejeição de valores e tokens inconsistentes; UI de `entrega` com cotação; 000024 reescrita **antes de aplicar Hosted** como extensão da função original, sem copiar regras de negócio.
+- Migrations de cota/rajada de 11/10 recuperadas da branch de preservação; nenhuma aplicada no Hosted.
+- Limites de evidência: testes do AI Studio pertencem ao código anterior; `bun run check`, PostgreSQL 000023→000024, E2E completo e recuperação Hosted ainda precisam ser executados contra o SHA final (**NOT EVALUATED**).
+- Frontend segue com `VITE_GOOGLE_ROUTES_UI_ENABLED=false` e proteção de build; `GOOGLE_ROUTES_ENABLED=true` e segredos Google/HMAC só após aprovação de custo, backup, migrations e Edge. Não realizar merge, deploy, `db push`, uso pago de Maps ou DDL Hosted.
+- Próxima ação: validar branch com checks sem segredos e staging isolado para 000023/000024; conferir release guard antigo, revisar as permissões SQL, garantir backup/restore Hosted e só depois planejar release.
+
 ## Handoff — 21/10/2026: priorização da liberação comercial, sem instalação local
 
 O proprietário esclareceu que os 520 produtos são catálogo provisório e serão selecionados/recadastrados antes da comercialização. Alvo agora é liberar plataforma B2C/B2B estável/segura, não preservar SKUs atuais a qualquer custo. **Não interpretar isso como autorização de excluir o banco, 6 pedidos, 2 contas Auth ou 5 PDFs privados**; a classificação/exclusão de dados requer decisão granular.
