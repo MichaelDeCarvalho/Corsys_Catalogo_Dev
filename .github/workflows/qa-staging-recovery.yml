@@ -62,3 +62,60 @@ jobs:
       - name: Clean disposable Supabase
         if: always()
         run: supabase stop --no-backup || true
+
+  # Manually selected branch only. Never targets Supabase Hosted or Google APIs.
+  freight_shipping:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'fix/frete-v1-release-readiness'
+    name: Isolated SQL 000023 + 000024
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GITHUB_ACTIONS: 'true'
+      QA_CONFIRM_DISPOSABLE_STACK: 'yes'
+      VITE_GOOGLE_ROUTES_UI_ENABLED: 'false'
+      GOOGLE_ROUTES_ENABLED: 'false'
+    steps:
+      - name: Checkout selected revision without stored credentials
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup pinned local Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+
+      - name: Prepare synthetic tenants and suppress billable Google migrations in disposable runner
+        run: |
+          test -z "${SUPABASE_ACCESS_TOKEN:-}" && test -z "${SUPABASE_PROJECT_ID:-}"
+          python3 scripts/qa-browser/prepare_isolated_stack.py
+          bash -n scripts/qa-browser/drill_staging_migrations_000023_000024.sh
+
+      - name: Withhold both checkout migrations until isolated staging DB is restored
+        shell: bash
+        run: |
+          mv supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql \
+            supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.stage-disabled
+          mv supabase/migrations/20261022000000_000024_checkout_shipping_fee_support.sql \
+            supabase/migrations/20261022000000_000024_checkout_shipping_fee_support.stage-disabled
+
+      - name: Start only the unlinked local Supabase stack
+        shell: bash
+        run: |
+          test ! -e supabase/.temp/project-ref
+          test -z "${SUPABASE_ACCESS_TOKEN:-}" && test -z "${SUPABASE_PROJECT_ID:-}"
+          docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 corsys-freight-staging
+          supabase start --network-id corsys-freight-staging --exclude studio,mail,analytics
+
+      - name: Restore migration files and test synthetic SQL 000023 then 000024
+        shell: bash
+        run: |
+          mv supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.stage-disabled \
+            supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql
+          mv supabase/migrations/20261022000000_000024_checkout_shipping_fee_support.stage-disabled \
+            supabase/migrations/20261022000000_000024_checkout_shipping_fee_support.sql
+          bash scripts/qa-browser/drill_staging_migrations_000023_000024.sh
+
+      - name: Delete only the local disposable stack
+        if: always()
+        run: supabase stop --no-backup || true
