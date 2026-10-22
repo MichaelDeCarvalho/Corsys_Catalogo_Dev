@@ -1,0 +1,6 @@
+{
+  "name": "OmniCatálogo SaaS - Plataforma Multi-Tenant de Catálogos e Pedidos",
+  "description": "Plataforma SaaS multi-tenant para criação, comercialização e gestão de catálogos online B2B/B2C com painel master, gestão de lojistas, pedidos via WhatsApp e controle de acessos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

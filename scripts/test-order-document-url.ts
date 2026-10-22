@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { isAllowedOrderDocumentUrl as allowed } from '../src/utils/orderDocumentUrl';
+const api = 'http://127.0.0.1:54321';
+const local = `${api}/storage/v1/object/sign/order-documents/qa.pdf?token=fixture`;
+assert.equal(allowed(local), false);
+assert.equal(allowed(local, false, api), false);
+assert.equal(allowed(local, true, api), true);
+assert.equal(allowed(local, true, 'https://project.supabase.co'), false);
+assert.equal(allowed(local.replace(':54321', ':54322'), true, api), false);
+assert.equal(allowed(local.replace('127.0.0.1', 'evil.example'), true, api), false);
+assert.equal(allowed(`${api}/other`, true, api), false);
+assert.equal(allowed('javascript:alert(1)', true, api), false);
+assert.equal(allowed('https://user:password@example.com/a'), false);
+assert.equal(allowed('https://project.supabase.co/storage/v1/object/sign/order-documents/a'), true);
+console.log('PASS: production HTTPS and development loopback document URL boundaries');

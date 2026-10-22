@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+:root {
+  --primary-dark: #0F172A;
+  --primary-accent: #FF5A00;
+  --cta-text: #FFFFFF;
+  --bg-main: #F8FAFC;
+  --bg-card: #FFFFFF;
+  --border-color: #E2E8F0;
+  --cta-hover: #D94E00;
+  --success: #16A34A;
+  --text-muted: #475569;
+}
+
+/* Default / Screen: esconde o root de impressão */
+#order-print-root {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Oculta toda a aplicação React no #root durante a impressão */
+  body > #root {
+    display: none !important;
+  }
+
+  /* Exibe exclusivamente o portal de impressão fora do #root e fora de modals */
+  #order-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Evita quebras de página desagradáveis em blocos e itens de pedidos */
+  .print-avoid-break {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Remove botões e elementos interativos no impresso */
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
+}
