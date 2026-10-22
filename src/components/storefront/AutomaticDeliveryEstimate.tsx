@@ -41,7 +41,9 @@ export function AutomaticDeliveryEstimate({ slug, method, address, onQuoteCalcul
         body: { slug, method, address, privacyConfirmed: true },
       });
       const freightCents = data?.freightCents ?? data?.estimateCents;
-      if (error || !data || !Number.isSafeInteger(data.distanceMeters) || data.distanceMeters <= 0 ||
+      if (error || !data || typeof data.quoteToken !== 'string' || !data.quoteToken ||
+          !Number.isSafeInteger(data.rateCentsPerKm) || data.rateCentsPerKm <= 0 ||
+          !Number.isSafeInteger(data.distanceMeters) || data.distanceMeters <= 0 ||
           !Number.isSafeInteger(freightCents) || freightCents < 0 ||
           typeof data.originAddress !== 'string' || typeof data.destinationAddress !== 'string') throw new Error();
       
@@ -83,7 +85,7 @@ export function AutomaticDeliveryEstimate({ slug, method, address, onQuoteCalcul
       </p>
       <GoogleMapsRouteLink origin={result.originAddress} destination={result.destinationAddress} />
     </>}
-    <p>Estimativa baseada em rota básica de carro, com tarifa da modalidade escolhida. Não é cotação oficial da Uber nem rota específica de moto/caminhão. Frete sujeito à confirmação da loja e não incluído no total do pedido.</p>
+    <p>Estimativa baseada em rota básica de carro, com tarifa da modalidade escolhida. Não é cotação oficial da Uber nem rota específica de moto/caminhão. Valor sujeito à validação final pelo servidor e incluído no total oficial do pedido.</p>
     {result && <p>Distância fornecida por Google Maps.</p>}
   </div>;
 }
