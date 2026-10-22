@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateOrderPdf } from "../_shared/orderPdf.ts";
+import { estimatedFreightCents } from "../_shared/googleRoutes.ts";
+import { getDeliveryQuoteSecret, verifyDeliveryQuote } from "../_shared/deliveryQuote.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -752,153 +754,107 @@ Deno.serve(async (req: Request) => {
       buyerUserId = userData.user.id;
     }
 
-    // 11.5 Validação Segura e Estrita de Cotação de Frete Server-Side
+    // 11.5 Authoritative quote validation; financial values never come from the browser.
     let shippingFeeCents = 0;
-    if (deliveryMethod === "retirada") {
-      shippingFeeCents = 0;
-    } else {
+    const quoteFailure = (message: string, status = 400) =>
+      new Response(JSON.stringify({ error: message }), {
+        status, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    const calculatedMethods = ["uber_moto", "uber_carro", "entrega"];
+    if (calculatedMethods.includes(deliveryMethod)) {
       const rawQuoteToken = typeof payload.quoteToken === "string" ? payload.quoteToken.trim() : "";
-      if (!rawQuoteToken) {
-        return new Response(
-          JSON.stringify({ error: "Cotação de frete é obrigatória para o método de entrega selecionado." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (!rawQuoteToken || rawQuoteToken.length > 6000) {
+        return quoteFailure("Cotação de frete é obrigatória para o método de entrega selecionado.");
       }
-
-      let canonicalStr = "";
-      let signature = "";
+      const tokenPartsRaw = rawQuoteToken.split(".");
+      if (tokenPartsRaw.length !== 2) return quoteFailure("Token de cotação inválido.");
+      let canonicalStr: string;
       try {
-        const parts = rawQuoteToken.split(".");
-        if (parts.length !== 2) {
-          return new Response(
-            JSON.stringify({ error: "Formato do token de cotação de frete inválido." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        canonicalStr = atob(parts[0]);
-        signature = parts[1];
+        const bytes = Uint8Array.from(atob(tokenPartsRaw[0]), char => char.charCodeAt(0));
+        canonicalStr = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       } catch {
-        return new Response(
-          JSON.stringify({ error: "Token de cotação de frete malformado." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+        return quoteFailure("Token de cotação inválido.");
       }
-
-      // Validação da assinatura HMAC com segredo dedicado
-      const hmacSecret = Deno.env.get("DELIVERY_QUOTE_HMAC_SECRET") ||
-                         Deno.env.get("QUOTE_HMAC_SECRET") ||
-                         "corsys-freight-quote-hmac-secret-v1-key";
-      const encoder = new TextEncoder();
-      const keyData = encoder.encode(hmacSecret);
-      const key = await crypto.subtle.importKey(
-        "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-      );
-      const expectedSig = Array.from(
-        new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(canonicalStr)))
-      ).map(b => b.toString(16).padStart(2, "0")).join("");
-
-      if (expectedSig !== signature) {
-        return new Response(
-          JSON.stringify({ error: "Assinatura da cotação de frete é inválida ou foi adulterada." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      let validSignature: boolean;
+      try {
+        validSignature = await verifyDeliveryQuote(canonicalStr, tokenPartsRaw[1],
+          getDeliveryQuoteSecret(name => Deno.env.get(name)));
+      } catch {
+        return quoteFailure("Verificação do frete temporariamente indisponível.", 503);
       }
+      if (!validSignature) return quoteFailure("Assinatura de cotação inválida.");
 
       const tokenParts = canonicalStr.split("|");
-      let qSlug = "", qMethod = "", qOrigin = "", qDest = "", qDist = "", qRate = "", qFreight = "", qExpires = "";
-
-      if (tokenParts.length === 8) {
-        [qSlug, qMethod, qOrigin, qDest, qDist, qRate, qFreight, qExpires] = tokenParts;
-      } else if (tokenParts.length === 7) {
-        [qSlug, qMethod, qDest, qDist, qRate, qFreight, qExpires] = tokenParts;
-      } else {
-        return new Response(
-          JSON.stringify({ error: "Conteúdo do token de cotação é inválido." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (tokenParts.length !== 8 || tokenParts.some(value => !value)) {
+        return quoteFailure("Conteúdo da cotação inválido.");
       }
-
-      // 1. Validação da Loja
-      if (qSlug.toLowerCase() !== tenantSlug.toLowerCase()) {
-        return new Response(
-          JSON.stringify({ error: "A cotação de frete informada pertence a outra loja." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      const [qSlug, qMethod, qOrigin, qDest, qDist, qRate, qFreight, qExpires] = tokenParts;
+      if (qSlug !== tenantSlug.toLowerCase() || qMethod !== deliveryMethod.toLowerCase()) {
+        return quoteFailure("Cotação não corresponde à loja ou modalidade de entrega.");
       }
-
-      // 2. Validação do Método de Entrega
-      if (qMethod.toLowerCase() !== deliveryMethod.toLowerCase()) {
-        return new Response(
-          JSON.stringify({ error: "A cotação de frete não corresponde ao método de entrega selecionado." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      const expiry = new Date(qExpires).getTime();
+      if (!Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 31 * 60_000) {
+        return quoteFailure("Cotação expirada ou inválida. Calcule o frete novamente.");
       }
-
-      // 3. Validação de Expiração
-      const expiresDate = new Date(qExpires);
-      if (isNaN(expiresDate.getTime()) || expiresDate.getTime() <= Date.now()) {
-        return new Response(
-          JSON.stringify({ error: "Cotação de frete expirada. Solicite um novo cálculo de entrega." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      if (![qDist, qRate, qFreight].every(value => /^\d+$/.test(value))) {
+        return quoteFailure("Valores inválidos na cotação.");
       }
-
-      // 4. Validação de Endereço de Destino (Vínculo estrito)
-      const orderDestStr = `${sanitizedShippingAddress.street}, ${sanitizedShippingAddress.number || ''} - ${sanitizedShippingAddress.neighborhood || ''}, ${sanitizedShippingAddress.city || ''} - ${sanitizedShippingAddress.state || ''}, ${sanitizedShippingAddress.zipCode || ''}`
-        .trim().toLowerCase().replace(/\s+/g, " ");
-
-      if (qDest && qDest !== orderDestStr) {
-        return new Response(
-          JSON.stringify({ error: "O endereço de entrega foi alterado após o cálculo do frete. Recálculo obrigatório." }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
+      const distanceMeters = Number(qDist);
+      const rateCentsPerKm = Number(qRate);
+      const freightCents = Number(qFreight);
+      if (!Number.isSafeInteger(freightCents) || freightCents < 0) {
+        return quoteFailure("Valor de frete inválido.");
       }
-
-      // 5. Validação com as configurações atuais do tenant no banco (Origem e Tarifa)
-      const { data: tenantRow } = await supabaseAdmin
-        .from("tenants")
-        .select("id")
-        .or(`slug.eq.${tenantSlug}`)
-        .single();
-
-      if (tenantRow?.id) {
-        const { data: delSettingsRow } = await supabaseAdmin
-          .from("tenant_delivery_settings")
-          .select("settings")
-          .eq("tenant_id", tenantRow.id)
-          .maybeSingle();
-
-        const currentSettings = delSettingsRow?.settings || {};
-        const originObj = currentSettings.origin || {};
-        const currentOriginStr = `${originObj.street || ''}, ${originObj.number || ''} - ${originObj.neighborhood || ''}, ${originObj.city || ''} - ${originObj.state || ''}, ${originObj.zipCode || ''}`
-          .trim().toLowerCase().replace(/\s+/g, " ");
-
-        let currentRateCents = currentSettings.carCentsPerKm || 250;
-        if (deliveryMethod === "uber_moto") {
-          currentRateCents = currentSettings.motoCentsPerKm || 180;
-        } else if (deliveryMethod === "uber_carro" || deliveryMethod === "entrega") {
-          currentRateCents = currentSettings.carCentsPerKm || 250;
+      try {
+        if (estimatedFreightCents(distanceMeters, rateCentsPerKm) !== freightCents) {
+          return quoteFailure("Cálculo de frete inválido.");
         }
-
-        if (qOrigin && currentOriginStr && qOrigin !== currentOriginStr) {
-          return new Response(
-            JSON.stringify({ error: "O endereço da loja foi atualizado pelo lojista. Solicite uma nova cotação." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-
-        if (qRate && parseInt(qRate, 10) !== currentRateCents) {
-          return new Response(
-            JSON.stringify({ error: "A tarifa de frete da loja foi alterada pelo lojista. Solicite uma nova cotação." }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
+      } catch {
+        return quoteFailure("Distância ou tarifa inválida.");
       }
 
-      shippingFeeCents = parseInt(qFreight, 10) || 0;
+      const orderDestStr = [
+        (sanitizedShippingAddress.street || "") + ", " + (sanitizedShippingAddress.number || ""),
+        (sanitizedShippingAddress.neighborhood || "") + ", " + (sanitizedShippingAddress.city || ""),
+      ].join(" - ") + " - " + (sanitizedShippingAddress.state || "") + ", " + (sanitizedShippingAddress.zipCode || "");
+      const normalizedOrderDest = orderDestStr.trim().toLowerCase().replace(/\s+/g, " ");
+      if (qDest !== normalizedOrderDest) {
+        return quoteFailure("Endereço alterado. Calcule novamente o frete.");
+      }
+      const { data: tenantRow, error: tenantError } = await supabaseAdmin.from("tenants")
+        .select("id").eq("slug", tenantSlug).maybeSingle();
+      if (tenantError || !tenantRow?.id) return quoteFailure("Loja indisponível.");
+      const { data: methodRow, error: methodError } = await supabaseAdmin.from("tenant_public_settings")
+        .select("delivery_methods").eq("tenant_id", tenantRow.id).maybeSingle();
+      if (methodError || !Array.isArray(methodRow?.delivery_methods) || !methodRow.delivery_methods.includes(deliveryMethod)) {
+        return quoteFailure("Modalidade de entrega desabilitada pela loja.");
+      }
+      const { data: deliveryRow, error: deliveryError } = await supabaseAdmin.from("tenant_delivery_settings")
+        .select("settings").eq("tenant_id", tenantRow.id).maybeSingle();
+      const currentSettings = deliveryRow?.settings;
+      if (deliveryError || !currentSettings?.estimateEnabled || !currentSettings.origin) {
+        return quoteFailure("Configuração de entrega alterada. Calcule novamente.");
+      }
+      const originObj = currentSettings.origin;
+      const currentOriginStr = [
+        (originObj.street || "") + ", " + (originObj.number || ""),
+        (originObj.neighborhood || "") + ", " + (originObj.city || ""),
+      ].join(" - ") + " - " + (originObj.state || "") + ", " + (originObj.zipCode || "");
+      const normalizedOrigin = currentOriginStr.trim().toLowerCase().replace(/\s+/g, " ");
+      const currentRateCents = deliveryMethod === "uber_moto" ?
+        currentSettings.motoCentsPerKm : currentSettings.carCentsPerKm;
+      if (qOrigin !== normalizedOrigin || currentRateCents !== rateCentsPerKm) {
+        return quoteFailure("Origem ou tarifa alterada pela loja. Recalcule o frete.");
+      }
+      shippingFeeCents = freightCents;
+    } else if (deliveryMethod === "retirada" ||
+               ["transportadora", "outro", "uber"].includes(deliveryMethod)) {
+      // Legacy freight-to-agree methods are not Google mileage quotations.
+      shippingFeeCents = 0;
+    } else {
+      return quoteFailure("Modalidade de entrega não suportada.");
     }
-
-    const calculatedShippingFee = Math.max(0, Math.round(shippingFeeCents) / 100);
+    const calculatedShippingFee = shippingFeeCents / 100;
 
     // 12. Chamada à RPC Transacional com service_role
     const { data: orderResult, error: rpcError } = await supabaseAdmin.rpc(
