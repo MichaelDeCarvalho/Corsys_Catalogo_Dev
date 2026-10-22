@@ -2,11 +2,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { computeGoogleRoadDistance, estimatedFreightCents } from "../_shared/googleRoutes.ts";
 import { getDeliveryQuoteSecret, signDeliveryQuote } from "../_shared/deliveryQuote.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
 
 /**
  * Segredo HMAC dedicado para cotações de frete, isolado das credenciais do Supabase.
@@ -34,20 +29,22 @@ function checkRateLimit(key: string, limit = 15, windowMs = 60000): boolean {
   return true;
 }
 
-/**
- * Assina uma cotação de frete server-side usando HMAC SHA-256 para evitar adulteração pelo cliente.
- */
-async function generateQuoteSignature(secret: string, payload: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(secret);
-  const key = await crypto.subtle.importKey(
-    "raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
-  return Array.from(new Uint8Array(signature)).map(b => b.toString(16).padStart(2, "0")).join("");
-}
-
 Deno.serve(async (req: Request) => {
+  const origin = req.headers.get("origin") || "";
+  const allowedOrigins = (Deno.env.get("ROUTING_ALLOWED_ORIGINS") || "")
+    .split(",").map(value => value.trim()).filter(Boolean);
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : "null",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+    "Cache-Control": "no-store",
+  };
+  // Origin is only a browser safeguard; project-wide quota remains mandatory.
+  if (!origin || !allowedOrigins.includes(origin)) {
+    return new Response(JSON.stringify({ error: "Origem não permitida." }),
+      { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -89,7 +86,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Rate Limiting / Proteção de Rajada
-    const rateLimitKey = `${slug}:${req.headers.get("x-forwarded-for") || "client-ip"}`;
+    const rateLimitKey = slug.toLowerCase();
     if (!checkRateLimit(rateLimitKey)) {
       return new Response(
         JSON.stringify({ error: "Limite de solicitações de frete excedido. Aguarde alguns instantes." }),
@@ -151,7 +148,9 @@ Deno.serve(async (req: Request) => {
       throw new Error("DELIVERY_METHOD_NOT_ALLOWED");
     const origin = settings.origin;
 
-    if (!origin || typeof origin !== "object" || keys.some(k => !origin[k] || !String(origin[k]).trim())) {
+    if (!origin || typeof origin !== "object" ||
+        keys.some(k => typeof origin[k] !== "string" || !origin[k].trim() || origin[k].length > 200 || origin[k].includes("|")) ||
+        !/^[A-Z]{2}$/.test(origin.state) || !/^\d{8}$/.test(origin.zipCode)) {
       return new Response(
         JSON.stringify({ error: "Endereço de saída da loja não cadastrado." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -173,7 +172,7 @@ Deno.serve(async (req: Request) => {
     const normDest = destinationStr.trim().toLowerCase().replace(/\s+/g, " ");
 
     // 3. Obtenção da distância via Google Routes ou Mock de Teste
-    const googleKey = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_ROUTES_API_KEY") || "";
+    const googleKey = Deno.env.get("GOOGLE_ROUTES_API_KEY") || "";
     let distanceMeters = 0;
 
     // No synthetic distance or bypass of project-wide quota in any deployable code.
