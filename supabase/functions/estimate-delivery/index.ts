@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { computeGoogleRoadDistance, estimatedFreightCents } from "../_shared/googleRoutes.ts";
+import { getDeliveryQuoteSecret, signDeliveryQuote } from "../_shared/deliveryQuote.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,9 +12,7 @@ const corsHeaders = {
  * Segredo HMAC dedicado para cotações de frete, isolado das credenciais do Supabase.
  */
 function getQuoteHmacSecret(): string {
-  return Deno.env.get("DELIVERY_QUOTE_HMAC_SECRET") ||
-         Deno.env.get("QUOTE_HMAC_SECRET") ||
-         "corsys-freight-quote-hmac-secret-v1-key";
+  return getDeliveryQuoteSecret(name => Deno.env.get(name));
 }
 
 /**
@@ -60,6 +59,11 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  if (Deno.env.get("GOOGLE_ROUTES_ENABLED") !== "true") {
+    return new Response(JSON.stringify({ error: "Frete automático indisponível." }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
   try {
     const rawBody = await req.text();
     let body: Record<string, unknown>;
@@ -77,7 +81,7 @@ Deno.serve(async (req: Request) => {
     const privacyConfirmed = body.privacyConfirmed === true;
     const address = body.address as Record<string, string> | undefined;
 
-    if (!slug || !method || !privacyConfirmed || !address || typeof address !== "object") {
+    if (!/^[a-z0-9-]{1,100}$/.test(slug) || !["uber_moto", "uber_carro", "entrega"].includes(method) || !privacyConfirmed || !address || typeof address !== "object" || Array.isArray(address)) {
       return new Response(
         JSON.stringify({ error: "Parâmetros de cotação incompletos ou não confirmados." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -94,7 +98,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const keys = ["street", "number", "neighborhood", "city", "state", "zipCode"];
-    if (keys.some(k => typeof address[k] !== "string" || !address[k].trim())) {
+    if (keys.some(k => typeof address[k] !== "string" || !address[k].trim() || address[k].length > 200 || address[k].includes("|")) || !/^[A-Z]{2}$/.test(address.state) || !/^\d{8}$/.test(address.zipCode)) {
       return new Response(
         JSON.stringify({ error: "Endereço de entrega deve ser preenchido completamente." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -112,9 +116,10 @@ Deno.serve(async (req: Request) => {
         secretKey = "";
       }
     }
-    if (!secretKey) secretKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "server-secret-key-fallback";
+    if (!secretKey) secretKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!supabaseUrl || !secretKey) throw new Error("ROUTING_CONFIGURATION_MISSING");
 
-    const supabaseAdmin = createClient(supabaseUrl || "http://127.0.0.1:54321", secretKey, {
+    const supabaseAdmin = createClient(supabaseUrl, secretKey, {
       auth: { persistSession: false },
     });
 
@@ -139,6 +144,11 @@ Deno.serve(async (req: Request) => {
       .maybeSingle();
 
     const settings = delData?.settings || {};
+    if (!settings.estimateEnabled) throw new Error("ROUTING_DISABLED_BY_TENANT");
+    const { data: methodsRow, error: methodsError } = await supabaseAdmin.from("tenant_public_settings")
+      .select("delivery_methods").eq("tenant_id", tenantData.id).maybeSingle();
+    if (methodsError || !Array.isArray(methodsRow?.delivery_methods) || !methodsRow.delivery_methods.includes(method))
+      throw new Error("DELIVERY_METHOD_NOT_ALLOWED");
     const origin = settings.origin;
 
     if (!origin || typeof origin !== "object" || keys.some(k => !origin[k] || !String(origin[k]).trim())) {
@@ -149,11 +159,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // 2. Determina tarifa por km
-    let centsPerKm = settings.carCentsPerKm || 250;
+    let centsPerKm = settings.carCentsPerKm;
     if (method === "uber_moto") {
-      centsPerKm = settings.motoCentsPerKm || 180;
+      centsPerKm = settings.motoCentsPerKm;
     } else if (method === "uber_carro" || method === "entrega") {
-      centsPerKm = settings.carCentsPerKm || 250;
+      centsPerKm = settings.carCentsPerKm;
     }
 
     const originStr = `${origin.street}, ${origin.number} - ${origin.neighborhood}, ${origin.city} - ${origin.state}, ${origin.zipCode}`;
@@ -166,21 +176,21 @@ Deno.serve(async (req: Request) => {
     const googleKey = Deno.env.get("GOOGLE_MAPS_API_KEY") || Deno.env.get("GOOGLE_ROUTES_API_KEY") || "";
     let distanceMeters = 0;
 
-    if (googleKey && googleKey !== "mock-key") {
-      distanceMeters = await computeGoogleRoadDistance({
-        origin: originStr,
-        destination: destinationStr,
-        apiKey: googleKey,
-        deploymentApproved: true,
-        reserveAttempt: async () => true,
-      });
-    } else {
-      // Mock sintético determinístico baseado em hash das cadeias de endereço para testes offline/QA
-      const strToHash = normOrigin + normDest;
-      let hash = 0;
-      for (let i = 0; i < strToHash.length; i++) hash = ((hash << 5) - hash) + strToHash.charCodeAt(i);
-      distanceMeters = Math.abs(hash % 20000) + 1500; // Entre 1,5 km e 21,5 km
-    }
+    // No synthetic distance or bypass of project-wide quota in any deployable code.
+    if (!googleKey || googleKey === "mock-key") throw new Error("GOOGLE_ROUTES_KEY_MISSING");
+    getQuoteHmacSecret();
+    estimatedFreightCents(1, centsPerKm);
+    distanceMeters = await computeGoogleRoadDistance({
+      origin: originStr,
+      destination: destinationStr,
+      apiKey: googleKey,
+      deploymentApproved: true,
+      reserveAttempt: async () => {
+        const reservation = await supabaseAdmin.rpc("reserve_google_routes_attempt");
+        if (reservation.error) return false;
+        return reservation.data === true;
+      },
+    });
 
     const freightCents = estimatedFreightCents(distanceMeters, centsPerKm);
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutos
@@ -188,8 +198,9 @@ Deno.serve(async (req: Request) => {
     // 4. Criação do Token Assinado de Cotação Autoritativa (com origem e destino normalizados vinculados)
     const canonicalQuoteStr = `${slug.trim().toLowerCase()}|${method.trim().toLowerCase()}|${normOrigin}|${normDest}|${distanceMeters}|${centsPerKm}|${freightCents}|${expiresAt}`;
     const hmacSecret = getQuoteHmacSecret();
-    const signature = await generateQuoteSignature(hmacSecret, canonicalQuoteStr);
-    const quoteToken = `${btoa(canonicalQuoteStr)}.${signature}`;
+    const signature = await signDeliveryQuote(canonicalQuoteStr, hmacSecret);
+    const payloadBytes = new TextEncoder().encode(canonicalQuoteStr);
+    const quoteToken = `${btoa(String.fromCharCode(...payloadBytes))}.${signature}`;
 
     return new Response(
       JSON.stringify({
@@ -204,11 +215,8 @@ Deno.serve(async (req: Request) => {
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Falha ao calcular estimativa.";
-    return new Response(
-      JSON.stringify({ error: msg }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  } catch {
+    return new Response(JSON.stringify({ error: "Frete indisponível. Confira o endereço ou tente novamente." }),
+      { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
