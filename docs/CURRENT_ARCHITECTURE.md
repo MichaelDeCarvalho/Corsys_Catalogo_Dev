@@ -1,3 +1,10 @@
+## Frete Automático V1 — preparação em desenvolvimento (22/10/2026)
+
+- Implementação na branch `fix/frete-v1-release-readiness`, **sem deploy**. Contrato: loja define origem e tarifas por km; Edge Google Routes obtém distância DRIVE com quota global e assina cotação; Edge checkout valida tenant/endereço/tarifa/expiração/valor; RPC 000024 atualiza total no PostgreSQL transacionalmente mantendo precificação congelada 000018 e guarda B2B 000023.
+- Migrations de controle de gastos: `20261011032224_google_routes_usage_limits.sql` e `20261011035235_google_routes_burst_protection.sql`. RPC de reserva acessível exclusivamente a service_role.
+- Segredo exclusivo obrigatório: `DELIVERY_QUOTE_HMAC_SECRET`; chave Google apenas Edge; `ROUTING_ALLOWED_ORIGINS` validada no browser; `GOOGLE_ROUTES_ENABLED` server-side e `VITE_GOOGLE_ROUTES_UI_ENABLED` frontend permanecem desabilitados em produção até release aprovado.
+- Homologação real de banco/Hosted e gate backup/Storage ainda pendentes. Referência: `docs/adr/ADR_016_FRETE_AUTOMATICO_QUOTE_HMAC.md`.
+
 # CURRENT ARCHITECTURE - CORSYS MULTI-TENANT
 
 ## 1. Arquitetura de Banco e Multi-tenancy
