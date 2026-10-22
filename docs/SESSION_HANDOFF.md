@@ -1,3 +1,10 @@
+## Checkpoint de teste de banco — 22/10/2026 (pré-execução)
+
+- Acrescentados `supabase/tests/database/07_checkout_shipping_000024_isolated.sql` e `scripts/qa-browser/drill_staging_migrations_000023_000024.sh` para executar PostgreSQL de verdade em banco sintético temporário: aplicar `000023` e `000024` em sequência, verificar funções e GRANTs, total com frete, idempotência/replay, retirada, isolamento de produto cross-tenant e bloqueio B2B.
+- Ao workflow já existente `Isolated Staging Recovery 000023` foi adicionado o job `Isolated SQL 000023 + 000024`, acionável por `workflow_dispatch` somente na branch `fix/frete-v1-release-readiness`. O job anterior da PR #6 permanece intacto.
+- Preparação local remove temporariamente Google migrations, exclui ambas as migrations alvo do startup, usa stack sem link ao Hosted, dados sintéticos e restauração em banco separado; nenhum endpoint Google é usado; delete no final só da stack descartável.
+- **Execução do novo job: PENDENTE / NOT EVALUATED.** Não declarar SQL PASS antes de resultado verde, logs e SHA. Mesmo eventual PASS não substitui backup/restauração Hosted, nem testa Auth/Storage física/Edge E2E.
+
 ## Checkpoint de desenvolvimento — 22/10/2026: frete V1 (não publicado)
 
 - Branch: `fix/frete-v1-release-readiness`, criada a partir de `82bedffa3e596ecca69879df6b70e6e71a66b6a4` após sincronização AI Studio.
