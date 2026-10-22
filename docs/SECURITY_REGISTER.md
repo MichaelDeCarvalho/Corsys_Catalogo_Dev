@@ -1,3 +1,10 @@
+## Frete V1 — correções de segurança preparadas em branch (22/10/2026)
+
+- Achados verificados no sync `82bedffa`: HMAC possuía fallback previsível; frete sintético podia ser assinado em runtime sem Google; `reserveAttempt` aprovava sem cota persistente; migration 000024 duplicava implementação financeira antiga.
+- Mitigações em `fix/frete-v1-release-readiness`: segredo HMAC exclusivo obrigatório; Google desativado por padrão, sem simulação faturável; reserva global fail-closed por RPC e quotas SQL; verificação estrita do token (identidade da loja, método, origem/destino, distância, tarifa, valor e expiração); evolução SQL usando checkout congelado com total atualizado na mesma transação.
+- Riscos residuais: rate-limit por instância é auxiliar; quotas no Google Cloud e cobrança exigem controles externos. SQL 000023/000024, propriedade de funções, testes dinâmicos e recuperação do Hosted permanecem **NOT EVALUATED** até ambiente apropriado. Não considerar produção liberada.
+- Segredos necessários futuramente: `DELIVERY_QUOTE_HMAC_SECRET` (único e aleatório), `GOOGLE_ROUTES_API_KEY`, `ROUTING_ALLOWED_ORIGINS`; nunca usar variáveis públicas `VITE_*` para segredos.
+
 # SECURITY REGISTER - PRIVACIDADE E RLS
 
 ## 1. Tratamento de Dados Financeiros e de Custo (`cost_price`)
