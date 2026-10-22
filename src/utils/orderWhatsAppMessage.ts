@@ -50,7 +50,7 @@ export function buildOrderWhatsAppMessage(
   const shippingText =
     receipt.shippingFee > 0
       ? formatBrlCurrency(receipt.shippingFee)
-      : 'A combinar / Calculado pela loja';
+      : (receipt.deliveryMethod === 'retirada' ? 'Grátis (Retirada na loja)' : 'A combinar / Calculado pela loja');
 
   return `Olá! Gostaria de enviar o pedido *${receipt.orderNumber}*.
 

@@ -27,7 +27,7 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { useWholesaleAccess } from '../../context/WholesaleAccessContext';
 import { PaymentMethod, TenantPublicSettings } from '../../types';
-import { AutomaticDeliveryEstimate } from './AutomaticDeliveryEstimate';
+import { AutomaticDeliveryEstimate, DeliveryQuote } from './AutomaticDeliveryEstimate';
 import { getSafeProductImage, handleProductImageError } from '../../utils/productImages';
 import {
   submitOrderCheckout,
@@ -212,6 +212,7 @@ export const CartDrawer: React.FC<{
   const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
   const [submittingStateText, setSubmittingStateText] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [activeQuote, setActiveQuote] = useState<DeliveryQuote | null>(null);
 
   // Métodos de entrega provenientes exclusivamente das configurações oficiais da loja
   const availableDeliveryMethods = settings?.deliveryMethods || [];
@@ -437,6 +438,15 @@ export const CartDrawer: React.FC<{
       return;
     }
 
+    if (
+      import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' &&
+      ['uber_moto', 'uber_carro'].includes(deliveryMethod) &&
+      !activeQuote
+    ) {
+      setSubmitError('Calcule a estimativa de frete para o endereço informado antes de avançar para a revisão.');
+      return;
+    }
+
     setErrors({});
     setSubmitError(null);
     setCheckoutStep('review');
@@ -640,7 +650,8 @@ export const CartDrawer: React.FC<{
         paymentMethod: formValues.paymentMethod,
         deliveryMethod: deliveryMethod.trim(),
         notes: formValues.notes.trim() || undefined,
-        sellerCode: formValues.sellerCode.trim() || undefined
+        sellerCode: formValues.sellerCode.trim() || undefined,
+        quoteToken: activeQuote?.quoteToken || undefined
       };
 
       // Só permite reutilizar recibo após popup fechado se draft e identidade não mudaram.
@@ -1096,6 +1107,7 @@ export const CartDrawer: React.FC<{
                         type="button"
                         onClick={() => {
                           setDeliveryMethod(m);
+                          setActiveQuote(null);
                           setSubmitError(null);
                         }}
                         className={`p-2.5 rounded-xl border text-left flex items-center justify-between cursor-pointer transition-colors ${
@@ -1118,7 +1130,8 @@ export const CartDrawer: React.FC<{
               {settings && import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' && ['uber_moto', 'uber_carro'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
                 slug={settings.slug} method={deliveryMethod}
                 address={{ street: customerData.street, number: customerData.number, neighborhood: customerData.neighborhood,
-                  city: customerData.city, state: customerData.state, zipCode: customerData.zipCode.replace(/\D/g, '') }} />}
+                  city: customerData.city, state: customerData.state, zipCode: customerData.zipCode.replace(/\D/g, '') }}
+                onQuoteCalculated={q => setActiveQuote(q)} />}
               <div className="pt-2 border-t border-slate-100 space-y-2">
                 <p className="font-bold text-slate-700">Endereço do comprador / entrega</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -1130,7 +1143,9 @@ export const CartDrawer: React.FC<{
                         value={customerData[field as keyof typeof customerData]}
                         onChange={e => {
                           const value = field === 'state' ? e.target.value.toUpperCase() : e.target.value;
-                          setCustomerData(prev => ({ ...prev, [field]: value })); setSubmitError(null);
+                          setCustomerData(prev => ({ ...prev, [field]: value }));
+                          setActiveQuote(null);
+                          setSubmitError(null);
                         }}
                         className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-[#FF5A00] focus:outline-none" />
                       {errors[field] && <span role="alert" className="block text-red-500 text-xs">{errors[field]}</span>}
@@ -1296,23 +1311,57 @@ export const CartDrawer: React.FC<{
               </div>
             </div>
 
-            {/* Resumo Financeiro Estimado */}
+            {/* Resumo Financeiro Oficial */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
               <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-200 pb-1.5">
                 Resumo Estimado
               </div>
               <div className="flex justify-between text-slate-600">
-                <span>Subtotal Estimado:</span>
+                <span>Subtotal dos Produtos:</span>
                 <span className="font-medium text-slate-900">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
               </div>
-              <div className="flex justify-between text-slate-600">
-                <span>Frete:</span>
-                <span className="text-amber-800 font-medium">A combinar / Calculado pela loja</span>
-              </div>
-              <div className="flex justify-between text-sm font-extrabold text-[#0F172A] pt-2 border-t border-slate-200">
-                <span>Total Estimado:</span>
-                <span className="text-[#0F172A]">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
-              </div>
+              {activeQuote ? (
+                <>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Distância Utilizada:</span>
+                    <span className="font-medium text-slate-900">{(activeQuote.distanceMeters / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} km</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Tarifa Aplicada:</span>
+                    <span className="font-medium text-slate-900">R$ {(activeQuote.rateCentsPerKm / 100).toFixed(2).replace('.', ',')} / km</span>
+                  </div>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Valor do Frete:</span>
+                    <span className="font-bold text-slate-900">R$ {(activeQuote.freightCents / 100).toFixed(2).replace('.', ',')}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-extrabold text-[#0F172A] pt-2 border-t border-slate-200">
+                    <span>Total (Produtos + Frete):</span>
+                    <span className="text-[#0F172A]">R$ {(cartSubtotal + activeQuote.freightCents / 100).toFixed(2).replace('.', ',')}</span>
+                  </div>
+                </>
+              ) : deliveryMethod === 'retirada' ? (
+                <>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Frete:</span>
+                    <span className="font-bold text-emerald-700">Grátis (Retirada na Loja)</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-extrabold text-[#0F172A] pt-2 border-t border-slate-200">
+                    <span>Total do Pedido:</span>
+                    <span className="text-[#0F172A]">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-slate-600">
+                    <span>Frete:</span>
+                    <span className="text-amber-800 font-medium">A combinar / Calculado pela loja</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-extrabold text-[#0F172A] pt-2 border-t border-slate-200">
+                    <span>Total Estimado:</span>
+                    <span className="text-[#0F172A]">R$ {cartSubtotal.toFixed(2).replace('.', ',')}</span>
+                  </div>
+                </>
+              )}
               <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-600 space-y-1">
                 <div><strong>Forma de Pagamento Pretendida:</strong> {getPaymentMethodLabel(formValues.paymentMethod)}</div>
                 <div className="text-[10px] text-amber-800">

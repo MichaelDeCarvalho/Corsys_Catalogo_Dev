@@ -41,6 +41,7 @@ export interface SubmitOrderCheckoutDraft {
   deliveryMethod: string;
   notes?: string;
   sellerCode?: string;
+  quoteToken?: string;
 }
 
 export interface CheckoutOrderItemReceipt {
@@ -469,6 +470,15 @@ export function buildCheckoutRequestBody(
     if (cleanCode) sellerCode = cleanCode;
   }
 
+  let quoteToken: string | undefined = undefined;
+  if (draft.quoteToken !== undefined && draft.quoteToken !== null) {
+    if (typeof draft.quoteToken !== 'string') {
+      throw new OrderCheckoutError('Token de cotação deve ser texto.', { status: 400 });
+    }
+    const cleanToken = draft.quoteToken.trim();
+    if (cleanToken) quoteToken = cleanToken;
+  }
+
   const requestBody: Record<string, unknown> = {
     tenantSlug: cleanTenantSlug,
     idempotencyKey: cleanIdempotencyKey,
@@ -479,7 +489,8 @@ export function buildCheckoutRequestBody(
     paymentMethod: draft.paymentMethod,
     deliveryMethod: cleanDeliveryMethod,
     notes,
-    sellerCode
+    sellerCode,
+    quoteToken
   };
 
   return requestBody;
@@ -514,7 +525,8 @@ export async function computeOrderFingerprint(
     paymentMethod: canonicalBody.paymentMethod,
     deliveryMethod: canonicalBody.deliveryMethod,
     notes: canonicalBody.notes,
-    sellerCode: canonicalBody.sellerCode
+    sellerCode: canonicalBody.sellerCode,
+    quoteToken: canonicalBody.quoteToken
   };
 
   const jsonStr = JSON.stringify(canonicalObj);
