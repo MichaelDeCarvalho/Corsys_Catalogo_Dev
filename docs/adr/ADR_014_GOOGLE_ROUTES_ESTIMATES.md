@@ -1,0 +1,16 @@
+# ADR 014 — estimativa rodoviária Google com bloqueio de ativação
+
+Usuário escolheu Google Maps e autorizou rota DRIVE básica comum, com tarifas diferentes Moto/Carro/Caminhão. Implementação usa Compute Routes Essentials, somente distanceMeters, sem tráfego/Enterprise; não garante rota específica de motocicleta ou restrições de caminhões. Substitui Geoapify e distância manual.
+
+Configuração de entrega do rascunho preservado 000019 foi integrada à cópia review-pr6; SQL real local validou administração própria, isolamento, comparação atômica e método ativo. Origem privada: somente administração e servidor; resposta da consulta compartilha endereço da loja para Maps URL de visualização solicitado. Não envia nome/documento/telefone/e-mail ao Google. Cliente solicita consulta com aviso; nenhum cálculo é disparado por digitação.
+
+Endpoint estimate-delivery público para manter varejo sem conta, com lista de origens e validação estrita. Origin/CORS não é identidade e pode ser forjado; reserva global em PostgreSQL limita tentativas em toda a aplicação. Proteção específica contra abuso por cliente e futura disponibilidade ainda devem ser avaliadas antes de ativação. Segredo somente servidor; GOOGLE_ROUTES_ENABLED ausente desativa. Cota Google de 250/dia complementada por contador de 250/dia, 7500/mês e 10 tentativas por janela de 60 segundos. Chave externa restritaRoutesAPI; sem restrição IP por aprovação explícita do usuário após explicação do risco residual; consumo agregado de billing ainda exige acompanhamento. Não garantir riscozero por alerta.
+
+Carrinho exibe distância e estimativa separadas; não altera total oficial/contrato do pedido, frete continua a combinar. Não afirmar que estimativa foi cobrada ou persistida no pedido. Mudança de endereço/modalidade/loja invalida resposta; respostas antigas são descartadas. Link MapsURL abre por ação do cliente, sem APIkey; trajeto externo pode diferir da rota calculada.
+
+Implementação local sem merge/deploy. Testes adapter sintéticos e SQL04/05 PASS; runtime endpoint originnegada403. Cálculo Google real e interface de estimativa validados localmente: quatro consultas, 4143 metros, Moto R$7,46 e Carro/Caminhão R$10,36. Segredo instalado exclusivamente no servidor local; produção não ativada. SQL05/06 de cotas/rajadas e check de fronteira do segredo passaram. A matriz completa de checkout B2B permanece parcial.
+
+
+## Adendo — gate explícito de UX antes da ativação, 2026-10-14
+
+Para reduzir ativação operacional antecipada durante a preparação do PR #6, a vitrine somente monta AutomaticDeliveryEstimate quando import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true'; o checkbox administrativo estimateEnabled também fica desabilitado no build sem o opt-in. Essa variável é pública, incorporada ao bundle, e **não** concede autorização, protege segredos ou substitui GOOGLE_ROUTES_ENABLED no servidor. Em produção, a configuração de tenant segue estimateEnabled=false e estimate-delivery não está publicada. Migrations 000019/000020 já estão aplicadas com versões alinhadas; migrations de limite Google continuam fora do Hosted. Para release sem Google, manter a flag Vite ausente ou false e não fazer db push que aplique migrations de Google inadvertidamente.

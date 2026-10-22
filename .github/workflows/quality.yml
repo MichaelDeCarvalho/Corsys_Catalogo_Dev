@@ -1,0 +1,45 @@
+name: Quality
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Valores públicos sintéticos: habilitam guards pré-rede sem apontar para backend real.
+      VITE_SUPABASE_URL: https://ci-test.invalid
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-public-placeholder
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run project checks
+        run: bun run check
+
+      - name: Syntax-check isolated browser QA runner (no network or accounts)
+        run: python3 -m py_compile scripts/qa-browser/test_b2b_access_browser.py scripts/qa-browser/test_retail_identity_browser.py scripts/qa-browser/test_browser_preflight.py scripts/qa-browser/test_checkout_field_policy_browser.py scripts/qa-browser/test_checkout_transaction_browser.py scripts/qa-browser/test_wholesale_transaction_browser.py scripts/qa-browser/test_checkout_session_race_browser.py scripts/qa-browser/test_revoked_wholesale_buyer_api.py scripts/qa-browser/test_pf_checkout_browser.py scripts/qa-browser/test_wholesale_ui_minimum_browser.py scripts/qa-browser/test_wholesale_session_races_browser.py && python3 -m unittest discover -s scripts/qa-browser -p 'test_browser_preflight.py' -v && python3 -m unittest discover -s scripts/qa-browser -p 'test_release_safety.py' -v && bash -n scripts/qa-browser/diagnose_local_order_pdf.sh scripts/qa-browser/assert_local_pf_order.sh scripts/qa-browser/drill_local_settings_rollback.sh scripts/qa-browser/drill_local_backup_restore.sh

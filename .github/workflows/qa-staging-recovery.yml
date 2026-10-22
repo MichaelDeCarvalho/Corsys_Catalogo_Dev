@@ -1,0 +1,64 @@
+name: Isolated Staging Recovery 000023
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/qa-browser/drill_staging_migration_000023.sh'
+      - '.github/workflows/qa-staging-recovery.yml'
+      - 'supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-recovery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recovery:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 6
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_ACTIONS: 'true'
+      QA_CONFIRM_DISPOSABLE_STACK: 'yes'
+      VITE_GOOGLE_ROUTES_UI_ENABLED: 'false'
+    steps:
+      - name: Checkout exact QA commit without persistent credentials
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup local Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.116.0
+
+      - name: Prepare only synthetic database fixtures
+        run: python3 scripts/qa-browser/prepare_isolated_stack.py
+
+      - name: Temporarily withhold migration 000023 to create pre-migration backup
+        shell: bash
+        run: |
+          mv supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql \
+            supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.stage-disabled
+
+      - name: Start isolated and unlinked Supabase
+        shell: bash
+        run: |
+          test -z "${SUPABASE_ACCESS_TOKEN:-}" && test -z "${SUPABASE_PROJECT_ID:-}"
+          docker network create -o com.docker.network.bridge.host_binding_ipv4=127.0.0.1 corsys-staging-recovery
+          supabase start --network-id corsys-staging-recovery --exclude studio,mail,analytics
+
+      - name: Restore migration file and verify selective backup-restore/migration
+        shell: bash
+        run: |
+          mv supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.stage-disabled \
+            supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql
+          bash scripts/qa-browser/drill_staging_migration_000023.sh
+
+      - name: Clean disposable Supabase
+        if: always()
+        run: supabase stop --no-backup || true
