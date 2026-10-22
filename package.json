@@ -3,7 +3,6 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "packageManager": "bun@1.4.2",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -12,6 +11,8 @@
     "lint": "tsc --noEmit",
     "test:regression": "tsx scripts/test-orders-frontend-integration-points.ts && tsx scripts/test-orders-checkout-points.ts && tsx scripts/test-product-media-storage-points.ts && tsx scripts/test-catalog-performance-points.ts && tsx scripts/test-branding-storage-points.ts && tsx scripts/test-security-hardening-points.ts && tsx scripts/test-admin-orders-points.ts && tsx scripts/test-admin-orders-v2-points.ts && tsx scripts/test-customer-order-tracking-points.ts && tsx scripts/test-checkout-fields.ts && bun scripts/test-wholesale-context.mjs",
     "check": "bun run lint && bun run build && bun run test:regression && bun scripts/test-order-document-url.ts && bun scripts/test-delivery-settings.ts && bun scripts/test-google-routing.ts && bun scripts/test-google-secret-boundary.ts && bun scripts/test-tracking-identity.mjs",
+    "test:regression:node": "tsx scripts/test-orders-frontend-integration-points.ts && tsx scripts/test-orders-checkout-points.ts && tsx scripts/test-product-media-storage-points.ts && tsx scripts/test-catalog-performance-points.ts && tsx scripts/test-branding-storage-points.ts && tsx scripts/test-security-hardening-points.ts && tsx scripts/test-admin-orders-points.ts && tsx scripts/test-admin-orders-v2-points.ts && tsx scripts/test-customer-order-tracking-points.ts && tsx scripts/test-checkout-fields.ts && node scripts/test-wholesale-context.mjs",
+    "check:node": "npm run lint && npm run build && npm run test:regression:node && tsx scripts/test-order-document-url.ts && tsx scripts/test-delivery-settings.ts && tsx scripts/test-google-routing.ts && tsx scripts/test-google-secret-boundary.ts && node scripts/test-tracking-identity.mjs",
     "deploy": "wrangler deploy"
   },
   "dependencies": {
