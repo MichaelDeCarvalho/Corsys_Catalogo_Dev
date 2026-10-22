@@ -86,14 +86,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Rate Limiting / Proteção de Rajada
-    const rateLimitKey = slug.toLowerCase();
-    if (!checkRateLimit(rateLimitKey)) {
-      return new Response(
-        JSON.stringify({ error: "Limite de solicitações de frete excedido. Aguarde alguns instantes." }),
-        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
+    // Only allocate in-memory limiter entries for real, active tenants.
     const keys = ["street", "number", "neighborhood", "city", "state", "zipCode"];
     if (keys.some(k => typeof address[k] !== "string" || !address[k].trim() || address[k].length > 200 || address[k].includes("|")) || !/^[A-Z]{2}$/.test(address.state) || !/^\d{8}$/.test(address.zipCode)) {
       return new Response(
@@ -132,6 +125,11 @@ Deno.serve(async (req: Request) => {
         JSON.stringify({ error: "Loja não encontrada ou inativa." }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    if (!checkRateLimit(tenantData.id)) {
+      return new Response(JSON.stringify({ error: "Limite de consultas de frete excedido." }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const { data: delData } = await supabaseAdmin
