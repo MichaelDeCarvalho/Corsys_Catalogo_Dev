@@ -440,7 +440,7 @@ export const CartDrawer: React.FC<{
 
     if (
       import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' &&
-      ['uber_moto', 'uber_carro'].includes(deliveryMethod) &&
+      ['uber_moto', 'uber_carro', 'entrega'].includes(deliveryMethod) &&
       !activeQuote
     ) {
       setSubmitError('Calcule a estimativa de frete para o endereço informado antes de avançar para a revisão.');
@@ -1127,7 +1127,7 @@ export const CartDrawer: React.FC<{
               </div>
 
               {/* Endereço: logradouro permanece obrigatório em qualquer método. */}
-              {settings && import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' && ['uber_moto', 'uber_carro'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
+              {settings && import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' && ['uber_moto', 'uber_carro', 'entrega'].includes(deliveryMethod) && <AutomaticDeliveryEstimate
                 slug={settings.slug} method={deliveryMethod}
                 address={{ street: customerData.street, number: customerData.number, neighborhood: customerData.neighborhood,
                   city: customerData.city, state: customerData.state, zipCode: customerData.zipCode.replace(/\D/g, '') }}
