@@ -11,21 +11,25 @@
 
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
+import { getDeliveryQuoteSecret, signDeliveryQuote, verifyDeliveryQuote } from '../supabase/functions/_shared/deliveryQuote';
 
 let passed = 0;
 let failed = 0;
+const pending: Promise<void>[] = [];
 
 function test(message: string, fn: () => void | Promise<void>) {
   try {
     const res = fn();
     if (res instanceof Promise) {
-      return res.then(() => {
+      const check = res.then(() => {
         console.log(`  ✓ ${message}`);
         passed++;
       }).catch(err => {
         console.error(`  ✗ FAIL: ${message} -> ${err.message}`);
         failed++;
       });
+      pending.push(check);
+      return check;
     } else {
       console.log(`  ✓ ${message}`);
       passed++;
@@ -36,7 +40,7 @@ function test(message: string, fn: () => void | Promise<void>) {
   }
 }
 
-const HMAC_TEST_SECRET = 'corsys-freight-quote-hmac-secret-v1-key';
+const HMAC_TEST_SECRET = 'synthetic-qa-only-secret-32bytes-minimum-for-hmac-test';
 
 async function generateSignature(secret: string, payload: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -79,14 +83,22 @@ async function runHomologationSuite() {
   const estimateCode = fs.readFileSync('supabase/functions/estimate-delivery/index.ts', 'utf-8');
   const submitCode = fs.readFileSync('supabase/functions/submit-order-checkout/index.ts', 'utf-8');
   const migration24Code = fs.readFileSync('supabase/migrations/20261022000000_000024_checkout_shipping_fee_support.sql', 'utf-8');
+  const quoteCryptoCode = fs.readFileSync('supabase/functions/_shared/deliveryQuote.ts', 'utf-8');
 
-  test('1.1 Segredo HMAC de cotação é independente de SUPABASE_SECRET_KEYS e service_role', () => {
-    assert(estimateCode.includes('DELIVERY_QUOTE_HMAC_SECRET') || estimateCode.includes('QUOTE_HMAC_SECRET'));
-    assert(submitCode.includes('DELIVERY_QUOTE_HMAC_SECRET') || submitCode.includes('QUOTE_HMAC_SECRET'));
+  test('1.1 Segredo HMAC dedicado é obrigatório, sem fallback fixo', () => {
+    assert(quoteCryptoCode.includes('DELIVERY_QUOTE_HMAC_SECRET_NOT_CONFIGURED'));
+    assert(!estimateCode.includes('corsys-freight-quote-hmac-secret-v1-key'));
+    assert(!submitCode.includes('corsys-freight-quote-hmac-secret-v1-key'));
+    assert.throws(() => getDeliveryQuoteSecret(() => undefined));
+    assert.equal(getDeliveryQuoteSecret(name => name === 'DELIVERY_QUOTE_HMAC_SECRET' ? HMAC_TEST_SECRET : undefined), HMAC_TEST_SECRET);
   });
 
-  test('1.2 estimate-delivery inclui taxa limite/rajada (rate limit) in-memory', () => {
-    assert(estimateCode.includes('rateLimitMap') && estimateCode.includes('checkRateLimit'));
+  test('1.2 Rotas são reais e dependem de quota global persistente, sem mock', () => {
+    assert(estimateCode.includes('checkRateLimit'));
+    assert(estimateCode.includes('reserve_google_routes_attempt'));
+    assert(estimateCode.includes('GOOGLE_ROUTES_ENABLED'));
+    assert(!estimateCode.includes('reserveAttempt: async () => true'));
+    assert(!estimateCode.includes('Math.abs(hash % 20000)'));
   });
 
   test('1.3 quoteToken vincula slug, método, origem normalizada, destino normalizado, distância, tarifa e expiração', () => {
@@ -98,7 +110,9 @@ async function runHomologationSuite() {
     assert(submitCode.includes('orderDestStr'));
     assert(submitCode.includes('currentOriginStr'));
     assert(submitCode.includes('currentRateCents'));
-    assert(submitCode.includes('expiresDate.getTime() <= Date.now()'));
+    assert(submitCode.includes('expiry <= Date.now()'));
+    assert(submitCode.includes('tokenParts.length !== 8'));
+    assert(submitCode.includes('estimatedFreightCents(distanceMeters, rateCentsPerKm)'));
   });
 
   test('1.5 Entrega calculada exige cotação válida e rejeita ausência de quoteToken com erro 400', () => {
@@ -106,7 +120,7 @@ async function runHomologationSuite() {
   });
 
   test('1.6 Retirada na loja autoriza frete zero sem cotação', () => {
-    assert(submitCode.includes('if (deliveryMethod === "retirada")'));
+    assert(submitCode.includes('deliveryMethod === "retirada"'));
   });
 
   // ------------------------------------------------------------------
@@ -211,16 +225,27 @@ async function runHomologationSuite() {
     assert.notEqual(tamperedSig, expectedSig);
   });
 
+  test('2.8 WebCrypto compartilhado rejeita adulteração com chave divergente', async () => {
+    const payload = 'tenant|uber_carro|origin|dest|5000|250|1250|2026-10-22T23:00:00.000Z';
+    const signature = await signDeliveryQuote(payload, HMAC_TEST_SECRET);
+    assert.equal(await verifyDeliveryQuote(payload, signature, HMAC_TEST_SECRET), true);
+    assert.equal(await verifyDeliveryQuote(payload.replace('dest', 'other'), signature, HMAC_TEST_SECRET), false);
+    assert.equal(await verifyDeliveryQuote(payload, signature, HMAC_TEST_SECRET + 'wrong'), false);
+    assert.equal(await verifyDeliveryQuote(payload, '0'.repeat(64), HMAC_TEST_SECRET), false);
+  });
+
   // ------------------------------------------------------------------
-  // 3. AUDITORIA DE INTEGRAGÃO DE BANCO & MIGRATIONS 000023 + 000024
+  // 3. VERIFICAÇÃO ESTÁTICA DE MIGRATIONS 000023 + 000024 — não substitui PostgreSQL real
   // ------------------------------------------------------------------
   console.log('\n3. Integridade do Banco e Sequência de Migrations 000023 + 000024');
 
   const migration23Code = fs.readFileSync('supabase/migrations/20261016000000_000023_checkout_idempotency_buyer_guard.sql', 'utf-8');
 
-  test('3.1 Migration 000024 estende private e public create_order_checkout_internal com p_shipping_fee NUMERIC(10,2) DEFAULT 0.00', () => {
-    assert(migration24Code.includes('p_shipping_fee NUMERIC(10,2) DEFAULT 0.00'));
-    assert(migration24Code.includes('v_total := round(v_subtotal + v_shipping_fee, 2);'));
+  test('3.1 Migration 000024 reutiliza checkout congelado e atualiza valor no mesmo transaction', () => {
+    assert(migration24Code.includes('p_shipping_fee numeric(10,2)'));
+    assert(migration24Code.includes('v_order := private.create_order_checkout_internal('));
+    assert(migration24Code.includes('UPDATE public.orders o'));
+    assert(migration24Code.includes('IF v_existing THEN RETURN v_order; END IF;'));
   });
 
   test('3.2 Migration 000024 preserva a trava advisory lock de idempotência por same-buyer (000023)', () => {
@@ -260,6 +285,7 @@ async function runHomologationSuite() {
     assert(adminCode.includes("import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED !== 'true'"));
   });
 
+  await Promise.all(pending); // Never print PASS before the asynchronous cryptographic checks finish.
   console.log('\n======================================================');
   console.log(`TOTAL DE TESTES HOMOLOGAÇÃO: ${passed + failed}`);
   console.log(`PASSOU: ${passed}`);
