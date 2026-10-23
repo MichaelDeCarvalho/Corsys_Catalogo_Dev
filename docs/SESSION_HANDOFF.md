@@ -1,3 +1,10 @@
+## Fase A — 23/10/2026: build de homologação de frete (local-only)
+
+- Branch: `fix/frete-v1-release-readiness`. Alterações: guard Vite permite Google apenas com modo `homologation`, opt-in QA e `VITE_SUPABASE_URL` localhost:54321; produção segue bloqueada por `RELEASE_BLOCKED_GOOGLE_ROUTES`. `supabase/config.toml` registra `estimate-delivery` público com `verify_jwt=false`, sem deploy. UI rejeita cotação sem prazo válido/expirada e o carrinho exige recálculo antes de revisão e submissão.
+- CI direcionado adicionado ao `.github/workflows/qa-staging-recovery.yml`: job `Freight QA build guard (offline)` testa quatro cenários de build, adapter Google mockado, HMAC e lint. `bun run check` 238 não é reexecutado por este job.
+- Procedimento: `docs/qa/FREIGHT_V1_LOCAL_HOMOLOGATION_20261023.md`.
+- **Status:** alterações versionadas, CI específico **NOT EVALUATED** antes de rodar o workflow. Nenhuma API Google real chamada, nenhuma migration/deploy Hosted e nenhuma chave/custo habilitados. E2E UI→Edge→Google real→checkout em staging ainda pendente.
+
 ## Etapa 4 — 23/10/2026: recuperação Hosted preparada; backup real ainda pendente
 
 - Runbook de execução privada e gate registrado em `docs/qa/HOSTED_BACKUP_RESTORE_GATE_20261023.md` na branch `fix/frete-v1-release-readiness`. Sem credenciais, dumps, objetos privados ou nomes de documentos no GitHub.
