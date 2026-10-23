@@ -1,3 +1,11 @@
+## Diagnóstico E2E — 23/10/2026: primeiro run falhou dentro do Playwright
+
+- Evidência: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/40007422747; revisão executada `a18ab74434b83661127e230d4cb0fcdac439e5b7`; job `Freight Checkout Browser E2E (offline)` **FAIL** na etapa `Test signed synthetic quotation with real local checkout and WhatsApp handoff`, com `FREIGHT-E2E: FAIL/BLOCKED (TimeoutError)` após cerca de 36 s.
+- **VERIFIED** no log: checkout do código, Bun, dependências, Supabase CLI, preparação sintética, Supabase local, origem/tarifa, Chromium e frontend iniciaram corretamente. O teste SQL final foi `skipped` por causa do timeout no navegador. `supabase stop --no-backup` concluiu a limpeza.
+- **NOT EVALUATED**: qual interação Playwright estourou o tempo; o script original deliberadamente só relatava tipo de exceção. Não atribuir erro ao checkout nem à API sem evidência.
+- Correção diagnóstica mínima: `scripts/qa-browser/test_freight_checkout_browser.py` agora imprime **somente o nome seguro da etapa** antes de cada interação crítica e inclui `stage=...` ao falhar. Não imprime endereço, documento, HMAC ou link WhatsApp. Sem mudanças de lógica de negócio nem credenciais.
+- Próxima ação: executar novamente **Run workflow** em `Isolated Browser QA`, branch `fix/frete-v1-release-readiness`, verificar a última `FREIGHT-E2E stage=...` e corrigir apenas o defeito comprovado. O teste continua em status **FAIL até PASS verificado**. Hosted/produção intocados.
+
 ## E2E de frete em navegador — 23/10/2026: preparado, execução pendente
 
 - Entrega adicionada **somente** em `fix/frete-v1-release-readiness`: novo job `Freight Checkout Browser E2E (offline)` no workflow `.github/workflows/qa-isolated.yml`, acionável por `workflow_dispatch` somente nesta branch. O job antigo da PR #6 não foi modificado.
