@@ -119,3 +119,33 @@ jobs:
       - name: Delete only the local disposable stack
         if: always()
         run: supabase stop --no-backup || true
+
+  freight_frontend:
+    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'fix/frete-v1-release-readiness'
+    name: Freight QA build guard (offline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VITE_GOOGLE_ROUTES_UI_ENABLED: 'false'
+    steps:
+      - name: Checkout isolated branch without credentials
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup pinned Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Test paid routing build gates in isolated localhost mode
+        run: bun scripts/test-freight-local-homologation.ts
+
+      - name: Verify mock Google Routes adapter and quote contract only
+        run: |
+          bun scripts/test-google-routing.ts
+          bun scripts/test-freight-security-homologation.ts
+          bun run lint
