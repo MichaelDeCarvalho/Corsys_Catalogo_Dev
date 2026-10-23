@@ -45,16 +45,20 @@ export function AutomaticDeliveryEstimate({ slug, method, address, onQuoteCalcul
           !Number.isSafeInteger(data.rateCentsPerKm) || data.rateCentsPerKm <= 0 ||
           !Number.isSafeInteger(data.distanceMeters) || data.distanceMeters <= 0 ||
           !Number.isSafeInteger(freightCents) || freightCents < 0 ||
-          typeof data.originAddress !== 'string' || typeof data.destinationAddress !== 'string') throw new Error();
+          typeof data.originAddress !== 'string' || typeof data.destinationAddress !== 'string' ||
+          typeof data.expiresAt !== 'string' ||
+          !Number.isFinite(Date.parse(data.expiresAt)) ||
+          Date.parse(data.expiresAt) <= Date.now() ||
+          Date.parse(data.expiresAt) > Date.now() + 31 * 60 * 1000) throw new Error();
       
       const quote: DeliveryQuote = {
-        quoteToken: data.quoteToken || '',
+        quoteToken: data.quoteToken,
         distanceMeters: data.distanceMeters,
-        rateCentsPerKm: data.rateCentsPerKm || 250,
+        rateCentsPerKm: data.rateCentsPerKm,
         freightCents,
         originAddress: data.originAddress,
         destinationAddress: data.destinationAddress,
-        expiresAt: data.expiresAt || new Date(Date.now() + 30 * 60 * 1000).toISOString()
+        expiresAt: data.expiresAt
       };
 
       if (current === generation.current) {
@@ -63,7 +67,7 @@ export function AutomaticDeliveryEstimate({ slug, method, address, onQuoteCalcul
       }
     } catch {
       if (current === generation.current) {
-        setError('Estimativa indisponível. Confira o endereço ou combine o frete com a loja.');
+        setError('Não foi possível calcular o frete automático. Confira o endereço e tente novamente; a entrega calculada não pode ser confirmada sem cotação.');
         if (onQuoteCalculated) onQuoteCalculated(null);
       }
     } finally {
