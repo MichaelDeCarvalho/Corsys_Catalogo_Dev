@@ -4,10 +4,18 @@ import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({mode}) => {
-  // PR #6 intentionally does not ship the paid estimate-delivery Edge backend.
-  // Fail the build instead of showing a checkout button that cannot work.
-  if (loadEnv(mode, process.cwd(), 'VITE_').VITE_GOOGLE_ROUTES_UI_ENABLED === 'true') {
-    throw new Error('RELEASE_BLOCKED_GOOGLE_ROUTES: backend not shipped; keep VITE_GOOGLE_ROUTES_UI_ENABLED=false');
+  // Google can be exposed ONLY in a deliberately selected local Supabase QA build.
+  // Production builds (including AI Studio / Cloudflare) remain fail-closed.
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  if (env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true') {
+    const localQa = mode === 'homologation' &&
+      env.VITE_CORSYS_HOMOLOGATION_APPROVED === 'true' &&
+      ['http://127.0.0.1:54321', 'http://localhost:54321'].includes(
+        (env.VITE_SUPABASE_URL || '').replace(/\/$/, '')
+      );
+    if (!localQa) {
+      throw new Error('RELEASE_BLOCKED_GOOGLE_ROUTES: only isolated localhost homologation builds may enable routing UI');
+    }
   }
   return {
     plugins: [react(), tailwindcss()],
