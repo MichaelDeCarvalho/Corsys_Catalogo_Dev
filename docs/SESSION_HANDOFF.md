@@ -1,3 +1,11 @@
+## Evidência da Fase A — 23/10/2026 (Quality direcionado / CI sem API paga)
+
+- GitHub Actions: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/40002247961, commit testado `ddb333d2bfac884ddacc06f93c6d66865692ad21`, conclusão **SUCCESS**, duração 2min03s.
+- Job `Freight QA build guard (offline)`: **PASS**, incluindo 4 cenários reais de build (produção, Hosted remoto, ausência de aprovação local e ambiente local autorizado), adapter Google com respostas sintéticas, contrato HMAC e TypeScript. Não houve consulta paga ao Google.
+- Job `Isolated SQL 000023 + 000024`: **PASS**, logs `STAGING-000024 SQL PASS` e `STAGING-000023-000024 PASS`, no banco PostgreSQL descartável. Job original `recovery` **skipped** por restrição da PR #6.
+- Evidência de teste limitada ao SHA acima. Esta atualização documental vem após a revisão testada, sem mudança de código executável.
+- **PRÓXIMO GATE:** ensaio E2E de interface real + Supabase local/Edge + cotação com Google real em homologação isolada. `Hosted recovery/ownership, physical Storage, Edge E2E and paid Google` ainda **NOT EVALUATED**. Necessários credencial Google restrita, autorização e controle de custo; não autorizar merge/deploy/migration Hosted por este PASS.
+
 ## Fase A — 23/10/2026: build de homologação de frete (local-only)
 
 - Branch: `fix/frete-v1-release-readiness`. Alterações: guard Vite permite Google apenas com modo `homologation`, opt-in QA e `VITE_SUPABASE_URL` localhost:54321; produção segue bloqueada por `RELEASE_BLOCKED_GOOGLE_ROUTES`. `supabase/config.toml` registra `estimate-delivery` público com `verify_jwt=false`, sem deploy. UI rejeita cotação sem prazo válido/expirada e o carrinho exige recálculo antes de revisão e submissão.
