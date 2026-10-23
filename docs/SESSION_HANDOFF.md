@@ -1,3 +1,10 @@
+## E2E Browser QA #3 — 23/10/2026: timeout da modalidade de entrega corrigido
+
+- Run observado: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/40022110905, SHA `49c8ed7759a26dd38dcc0accd2f23641be5454ac`, **FAIL** `TimeoutError` exatamente após checkpoint `FREIGHT-E2E stage=select-own-delivery`; até esse ponto catálogo, carrinho e dados do comprador carregaram.
+- Inspeção da fonte demonstrou incompatibilidade determinística: o Playwright buscava botão `Entrega própria`, mas `getDeliveryMethodLabel('entrega')` em `CartDrawer.tsx` retornava `Entrega Padrão`. A denominação oficial em `src/config/deliverySettings.ts` já é `Entrega própria`.
+- Correção mínima aplicada **somente na branch de desenvolvimento**: padronizado label do carrinho para `Entrega própria`, sem alterar método `entrega`, precificação, banco ou Edge; asserção de regressão adicionada à suíte direcionada `scripts/test-freight-local-homologation.ts`.
+- O PASS anterior de Stage A/SQL mantém suas evidências nos SHAs anteriores; **o E2E novo permanece NÃO APROVADO** até novo workflow `Isolated Browser QA` nesta branch terminar em verde e confirmar o recibo SQL/WhatsApp. Nenhuma chamada Google, Hosted ou deploy efetuada.
+
 ## Diagnóstico E2E — 23/10/2026: primeiro run falhou dentro do Playwright
 
 - Evidência: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/40007422747; revisão executada `a18ab74434b83661127e230d4cb0fcdac439e5b7`; job `Freight Checkout Browser E2E (offline)` **FAIL** na etapa `Test signed synthetic quotation with real local checkout and WhatsApp handoff`, com `FREIGHT-E2E: FAIL/BLOCKED (TimeoutError)` após cerca de 36 s.
