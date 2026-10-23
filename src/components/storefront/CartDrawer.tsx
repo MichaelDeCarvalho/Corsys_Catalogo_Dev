@@ -355,7 +355,7 @@ export const CartDrawer: React.FC<{
   const getDeliveryMethodLabel = (method: string): string => {
     const lower = method.toLowerCase();
     if (lower === 'retirada') return 'Retirada na Loja';
-    if (lower === 'entrega') return 'Entrega Padrão';
+    if (lower === 'entrega') return 'Entrega própria';
     if (lower === 'uber') return 'Uber / Entrega Rápida';
     if (lower === 'uber_moto') return 'Uber Moto';
     if (lower === 'uber_carro') return 'Carro / Caminhão';
