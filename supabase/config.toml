@@ -392,6 +392,10 @@ verify_jwt = false
 [functions.manage-wholesale-customer]
 verify_jwt = true
 
+# Public route quote endpoint; HMAC + global quota + tenant validation enforced in the function.
+[functions.estimate-delivery]
+verify_jwt = false
+
 [functions.submit-order-checkout]
 verify_jwt = false
 
