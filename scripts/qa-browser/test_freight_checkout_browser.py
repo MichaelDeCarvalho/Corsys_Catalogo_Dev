@@ -20,6 +20,15 @@ from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect, sync_playwright
 from test_b2b_access_browser import guarded_context, require_loopback, verify_safe
 
+ACTIVE_STAGE = "bootstrap"
+
+
+def checkpoint(name: str) -> None:
+    global ACTIVE_STAGE
+    ACTIVE_STAGE = name
+    print("FREIGHT-E2E stage=" + name, flush=True)
+
+
 SLUG = "corsys-catalogo-demo"
 DISTANCE_METERS = 5000  # synthetic; NEVER a live Google distance
 RATE_CENTS = 250
@@ -86,6 +95,7 @@ def main() -> None:
     if urlsplit(frontend).netloc == urlsplit(backend).netloc:
         sys.exit("BLOCKED: frontend and backend must have distinct loopback origins")
 
+    checkpoint("playwright-start")
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         try:
@@ -150,16 +160,21 @@ def main() -> None:
               };
             })();""")
             try:
+                checkpoint("storefront-navigation")
                 page.goto(frontend, wait_until="domcontentloaded", timeout=25000)
+                checkpoint("storefront-catalog-visible")
                 expect(page.get_by_text("Loja Oficial QA", exact=True).first).to_be_visible(timeout=25000)
+                checkpoint("storefront-product-add")
                 page.get_by_role("button", name=re.compile(r"^Adicionar \(\d+ [^)]+\)$")).first.click()
                 page.locator("#floating-open-cart-btn").click()
+                checkpoint("open-customer-details")
                 page.locator("#btn-cart-proceed").click()
                 page.get_by_placeholder("Nome completo").fill("Comprador QA Fictício")
                 page.get_by_placeholder("00.000.000/0001-00").fill("11.222.333/0001-81")
                 page.get_by_label("Razão social (varejo PJ)").fill("Empresa QA Fictícia")
                 page.get_by_label("E-mail", exact=True).fill("comprador@qa.invalid")
                 page.get_by_placeholder("Ex: 41987654321").fill("41999999999")
+                checkpoint("select-own-delivery")
                 page.get_by_role("button", name="Entrega própria").click()
                 page.get_by_label("Logradouro", exact=True).fill("Rua do Destino QA")
                 page.get_by_label("Número", exact=True).fill("55")
@@ -168,20 +183,26 @@ def main() -> None:
                 page.get_by_label("UF", exact=True).fill("PR")
                 page.get_by_label("CEP", exact=True).fill("80000000")
 
+                checkpoint("shipping-address-filled")
                 assert len(estimates) == 0, "Estimate called before explicit address confirmation"
+                checkpoint("estimate-button-enabled")
                 quote_button = page.get_by_role("button", name="Calcular estimativa de entrega")
                 expect(quote_button).to_be_enabled(timeout=7000)
 
                 # Must not proceed until a quote has been requested and accepted.
+                checkpoint("blocked-without-quote")
                 page.locator("#btn-validate-quote").click()
                 expect(page.get_by_text("Calcule ou atualize o frete", exact=False)).to_be_visible()
                 assert len(estimates) == 0 and len(submits) == 0
 
+                checkpoint("first-synthetic-quote")
+                checkpoint("first-synthetic-quote")
                 quote_button.click()
                 expect(page.get_by_text(re.compile(r"Frete:\s*R\$\s*12,50")).first).to_be_visible(timeout=10000)
                 assert len(estimates) == 1
 
                 # Editing the destination invalidates the original signed quote.
+                checkpoint("quote-invalidated-on-address-change")
                 page.get_by_label("Número", exact=True).fill("56")
                 page.locator("#btn-validate-quote").click()
                 expect(page.get_by_text("Calcule ou atualize o frete", exact=False)).to_be_visible()
@@ -189,12 +210,15 @@ def main() -> None:
 
                 quote_button.click()
                 expect(page.get_by_text(re.compile(r"Frete:\s*R\$\s*12,50")).first).to_be_visible(timeout=10000)
+                checkpoint("second-synthetic-quote")
                 assert len(estimates) == 2
+                checkpoint("review-freight-total")
                 page.locator("#btn-validate-quote").click()
                 expect(page.get_by_text("Total (Produtos + Frete):")).to_be_visible()
                 expect(page.get_by_text("R$ 42,50", exact=True).first).to_be_visible()
 
                 # Real submit-order-checkout Edge + real SQL and HMAC verification.
+                checkpoint("real-local-edge-checkout")
                 with page.expect_response(
                     lambda response: response.url == checkout_endpoint and
                         response.request.method == "POST", timeout=45000
@@ -211,6 +235,7 @@ def main() -> None:
                 assert abs(float(receipt.get("total", -1)) - 42.50) < 0.001
                 assert len(submits) == 1, "Checkout sent multiple requests"
 
+                checkpoint("whatsapp-handoff-intercepted")
                 page.wait_for_function(
                     "window.__qaWhatsAppLinks && window.__qaWhatsAppLinks.length === 1",
                     timeout=15000
@@ -225,6 +250,7 @@ def main() -> None:
                 assert "*Total:* R$ 42,50" in message
                 assert "QA-Produto Fictício" in message
                 assert "11.222.333/0001-81" not in message
+                checkpoint("external-network-guard")
                 verify_safe(private, external)
                 print(
                     "FREIGHT-E2E UI/Edge PASS: quote mocked only; "
@@ -244,5 +270,5 @@ if __name__ == "__main__":
         main()
     except Exception as error:
         # Never print customer fields, signed quote, WhatsApp text, or URL.
-        print("FREIGHT-E2E: FAIL/BLOCKED (" + type(error).__name__ + ")", file=sys.stderr)
+        print("FREIGHT-E2E: FAIL/BLOCKED stage=" + ACTIVE_STAGE + " (" + type(error).__name__ + ")", file=sys.stderr)
         raise SystemExit(1)
