@@ -47,4 +47,6 @@ assert.match(ui, /Date\.parse\(data\.expiresAt\) <= Date\.now\(\)/);
 assert.doesNotMatch(ui, /expiresAt:\s*data\.expiresAt\s*\|\|/);
 const cart = readFileSync('src/components/storefront/CartDrawer.tsx', 'utf8');
 assert.match(cart, /Date\.parse\(activeQuote\.expiresAt\) <= Date\.now\(\)/);
+// Prevent checkout E2E locator drift: storefront name must match the configured delivery method.
+assert.match(cart, /if \(lower === 'entrega'\) return 'Entrega própria';/);
 console.log('Stage-A frontend and Edge configuration contract: PASS (offline, no paid calls).');
