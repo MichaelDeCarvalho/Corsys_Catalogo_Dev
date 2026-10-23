@@ -441,9 +441,10 @@ export const CartDrawer: React.FC<{
     if (
       import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' &&
       ['uber_moto', 'uber_carro', 'entrega'].includes(deliveryMethod) &&
-      !activeQuote
+      (!activeQuote || Date.parse(activeQuote.expiresAt) <= Date.now())
     ) {
-      setSubmitError('Calcule a estimativa de frete para o endereço informado antes de avançar para a revisão.');
+      setActiveQuote(null);
+      setSubmitError('Calcule ou atualize o frete para este endereço antes de avançar para a revisão.');
       return;
     }
 
@@ -558,6 +559,17 @@ export const CartDrawer: React.FC<{
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       setSubmitError(Object.values(newErrors).join(' '));
+      return;
+    }
+
+    // Quote expires independently of the React form: block before opening WhatsApp or hitting checkout.
+    if (import.meta.env.VITE_GOOGLE_ROUTES_UI_ENABLED === 'true' &&
+        ['uber_moto', 'uber_carro', 'entrega'].includes(deliveryMethod) &&
+        (!activeQuote || !Number.isFinite(Date.parse(activeQuote.expiresAt)) ||
+         Date.parse(activeQuote.expiresAt) <= Date.now())) {
+      setActiveQuote(null);
+      setCheckoutStep('details');
+      setSubmitError('A cotação expirou ou está ausente. Calcule novamente o frete antes de confirmar.');
       return;
     }
 
