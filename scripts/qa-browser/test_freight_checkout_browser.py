@@ -196,7 +196,6 @@ def main() -> None:
                 assert len(estimates) == 0 and len(submits) == 0
 
                 checkpoint("first-synthetic-quote")
-                checkpoint("first-synthetic-quote")
                 quote_button.click()
                 expect(page.get_by_text(re.compile(r"Frete:\s*R\$\s*12,50")).first).to_be_visible(timeout=10000)
                 assert len(estimates) == 1
