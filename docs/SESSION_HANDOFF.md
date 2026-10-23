@@ -1,3 +1,12 @@
+## Etapa 4 — 23/10/2026: recuperação Hosted preparada; backup real ainda pendente
+
+- Runbook de execução privada e gate registrado em `docs/qa/HOSTED_BACKUP_RESTORE_GATE_20261023.md` na branch `fix/frete-v1-release-readiness`. Sem credenciais, dumps, objetos privados ou nomes de documentos no GitHub.
+- Preflight Supabase **READ-ONLY**: projeto `vlpwtdqqnecdvccxyodp` ACTIVE_HEALTHY, plano Free, PG17.6, histórico com 20 migrations até 000020. Contagens: 1 tenant, 520 produtos, 6 pedidos, 2 Auth users, 0 wholesale customers, 3 buckets, 105 Storage objects.
+- Distribuição Storage: 100 objetos públicos em `product-media`, 5 privados em `order-documents`, 0 em `tenant-assets`. Consultados apenas metadados agregados; bytes **não exportados**.
+- Documentação oficial consultada: Supabase Backup/Restore, Storage Downloads e restauração de plataforma. Backup de SQL sem objetos físicos não satisfaz recuperação.
+- **STATUS: gate Hosted BACKUP/RESTORE = NOT EVALUATED**. Nenhum backup real foi criado, nenhuma restauração Hosted foi testada, nenhuma mutation Supabase/Cloudflare/Google executada. A aplicação SQL 000023/000024, o merge e o deploy permanecem bloqueados por ausência de recuperação comprovada e autorização distinta.
+- Próximo responsável: operador em ambiente privado autorizado deve preparar cifragem, exportar roles/schema/data e todos os 105 binários Storage, restaurar em destino isolado, conferir Auth/RLS/ACL/Storage, medir RPO/RTO e registrar evidência sanitizada.
+
 ## Evidência comprovada — 23/10/2026: 000023 + 000024 em staging isolado
 
 - GitHub Actions run: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/39998260267 (workflow `Isolated Staging Recovery 000023`, job `Isolated SQL 000023 + 000024`). Commit testado: `ec679f3312dc6aca06499330c2cb6bd6db279d0a`. Conclusão **SUCCESS**, 2min12s, sem falhas.
