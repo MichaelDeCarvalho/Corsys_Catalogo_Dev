@@ -1,3 +1,12 @@
+## Evidência comprovada — 23/10/2026: 000023 + 000024 em staging isolado
+
+- GitHub Actions run: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/39998260267 (workflow `Isolated Staging Recovery 000023`, job `Isolated SQL 000023 + 000024`). Commit testado: `ec679f3312dc6aca06499330c2cb6bd6db279d0a`. Conclusão **SUCCESS**, 2min12s, sem falhas.
+- Log PostgreSQL confirma `STAGING-000024 SQL PASS: grants, total, replay, pickup, tenant isolation, negative fee and unapproved B2B` e `STAGING-000023-000024 PASS: isolated synthetic restore, ordered DDL, checkout integration, no source mutations`.
+- Passaram: instalação local/CLI, dados sintéticos, retirada temporária das migrations antes de iniciar stack, banco restaurado isolado, execução sequencial real 000023 + 000024, verificação SQL da RPC de frete, idempotência, privilégios e restrições. Job `recovery` legado corretamente **skipped**.
+- Limites explícitos do log: `NOT EVALUATED: Hosted recovery/ownership, physical Storage, Edge E2E and paid Google`. Warning do setup-cli para Node.js 24 não causou erro.
+- **Etapa 3: VERIFIED apenas para o PostgreSQL sintético**, não autoriza migrations Hosted ou merge/deploy. Próximo gate: backup/restore real de dados/Auth/ACL e objetos Storage do Hosted, RTO/RPO e autorização operacional específica.
+- Este registro de evidência é posterior ao SHA testado; não altera código de aplicação nem invalida o resultado anterior.
+
 ## Checkpoint de teste de banco — 22/10/2026 (pré-execução)
 
 - Acrescentados `supabase/tests/database/07_checkout_shipping_000024_isolated.sql` e `scripts/qa-browser/drill_staging_migrations_000023_000024.sh` para executar PostgreSQL de verdade em banco sintético temporário: aplicar `000023` e `000024` em sequência, verificar funções e GRANTs, total com frete, idempotência/replay, retirada, isolamento de produto cross-tenant e bloqueio B2B.
