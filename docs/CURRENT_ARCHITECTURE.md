@@ -1,3 +1,9 @@
+## Fase A — guard de ativação para homologação local (23/10/2026)
+
+- O frontend pode mostrar Google Routes apenas em bundle `vite build --mode homologation` com aprovação `VITE_CORSYS_HOMOLOGATION_APPROVED=true` e `VITE_SUPABASE_URL` explicitamente `http://127.0.0.1:54321` ou `http://localhost:54321`. Build produção continua negada.
+- `estimate-delivery` agora tem configuração `verify_jwt=false`, necessária ao carrinho público. A segurança financeira continua no backend: método autorizado pelo tenant, privacidade/origem permitida, HMAC exclusivo, tarifa e quota SQL; sem usar CORS como autenticação.
+- Esta decisão só permite compilação de homologação; não habilita Edge, Google pago ou qualquer API remota. Detalhes: `docs/qa/FREIGHT_V1_LOCAL_HOMOLOGATION_20261023.md`.
+
 ## Frete Automático V1 — preparação em desenvolvimento (22/10/2026)
 
 - Implementação na branch `fix/frete-v1-release-readiness`, **sem deploy**. Contrato: loja define origem e tarifas por km; Edge Google Routes obtém distância DRIVE com quota global e assina cotação; Edge checkout valida tenant/endereço/tarifa/expiração/valor; RPC 000024 atualiza total no PostgreSQL transacionalmente mantendo precificação congelada 000018 e guarda B2B 000023.
