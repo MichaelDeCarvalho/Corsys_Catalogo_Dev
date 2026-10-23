@@ -129,7 +129,7 @@ def main() -> None:
 
             # Scoped interception: all other requests (including checkout) use
             # existing allowlisted local routing, not synthetic responses.
-            ctx.route(endpoint, synthetic_estimate)
+            ctx.route(endpoint + "*", synthetic_estimate)
             ctx.on("request", observe_request)
 
             # Neutral popup captures the wa.me handoff entirely inside the page.
@@ -178,7 +178,7 @@ def main() -> None:
                 assert len(estimates) == 0 and len(submits) == 0
 
                 quote_button.click()
-                expect(page.get_by_text("Frete: R$ 12,50", exact=False).first).to_be_visible(timeout=10000)
+                expect(page.get_by_text(re.compile(r"Frete:\s*R\$\s*12,50")).first).to_be_visible(timeout=10000)
                 assert len(estimates) == 1
 
                 # Editing the destination invalidates the original signed quote.
@@ -188,7 +188,7 @@ def main() -> None:
                 assert len(estimates) == 1 and len(submits) == 0
 
                 quote_button.click()
-                expect(page.get_by_text("Frete: R$ 12,50", exact=False).first).to_be_visible(timeout=10000)
+                expect(page.get_by_text(re.compile(r"Frete:\s*R\$\s*12,50")).first).to_be_visible(timeout=10000)
                 assert len(estimates) == 2
                 page.locator("#btn-validate-quote").click()
                 expect(page.get_by_text("Total (Produtos + Frete):")).to_be_visible()
