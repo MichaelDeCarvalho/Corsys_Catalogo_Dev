@@ -1,3 +1,11 @@
+## E2E de frete em navegador — 23/10/2026: preparado, execução pendente
+
+- Entrega adicionada **somente** em `fix/frete-v1-release-readiness`: novo job `Freight Checkout Browser E2E (offline)` no workflow `.github/workflows/qa-isolated.yml`, acionável por `workflow_dispatch` somente nesta branch. O job antigo da PR #6 não foi modificado.
+- Novos scripts: `scripts/qa-browser/seed_local_freight.mjs` (configuração comercial fictícia), `scripts/qa-browser/test_freight_checkout_browser.py` (Playwright com **resposta mock apenas do endpoint estimate-delivery** + cotação HMAC sintética; checkout Edge real, validações de quote, recibo e WhatsApp interceptado), `scripts/qa-browser/assert_local_freight_order.sh` (leitura independente no Postgres, R$ 30 + R$ 12,50 = R$ 42,50). Documentação de aceitação: `docs/qa/FREIGHT_V1_BROWSER_E2E_20261023.md`.
+- Suite SQL anterior, Quality e Stage A permanecem comprovadas nos seus SHAs; o **novo job ainda não foi executado**. Revisão estática do workflow e guardas passou. `PASS` E2E é **NOT EVALUATED** até GitHub Actions terminar em verde e evidenciar HTTP 201 e consulta PostgreSQL.
+- Segurança: runners descartáveis sem link/credenciais Hosted; `GOOGLE_ROUTES_ENABLED=false`; segredo HMAC somente sintético de CI; checkout/DB local real; nenhuma solicitação real Google/WhatsApp, não expor dados e tokens nos logs.
+- Não autoriza migrations Hosted, merge, Cloudflare deploy, faturamento Google ou conclusão da homologação com Google real. Próxima ação: executar workflow `Isolated Browser QA` na branch `fix/frete-v1-release-readiness` e capturar logs do job específico.
+
 ## Evidência da Fase A — 23/10/2026 (Quality direcionado / CI sem API paga)
 
 - GitHub Actions: https://github.com/MichaelDeCarvalho/Corsys_Catalogo_Dev/actions/runs/40002247961, commit testado `ddb333d2bfac884ddacc06f93c6d66865692ad21`, conclusão **SUCCESS**, duração 2min03s.
